@@ -1,0 +1,284 @@
+---
+title: "Homework 4 PSTAT 131, Spring 2021"
+author: "Nishant Yadav and Tanner Berney"
+date: "Friday June 4th 2021"
+graphics: yes
+geometry: margin=0.75in
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, 
+                      cache=FALSE,  
+                      fig.width=5, 
+                      fig.height=5,
+                      fig.align='center')
+```
+
+----------------------
+```{r pkg, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tree)
+library(randomForest)
+library(gbm)
+library(ROCR)
+library(e1071)
+library(imager)
+```
+**Question 1 a-d**
+
+**Question 1a**
+$$
+(1-\frac{1}{n})^n
+$$
+
+**Question 1b**
+```{r}
+n <- 1000
+(1-1/n)^n
+```
+
+**Question 1c**
+```{r}
+set.seed(100)
+bootstrap_sample <- sample(1:1000, replace=TRUE)
+length(unique(bootstrap_sample))
+print(1000-length(unique(bootstrap_sample)))
+```
+**There are 634 unique values and 366 missing values. That would mean about 36% of the observations are out-of-bag.**
+
+**Question 1d**
+```{r}
+shots <- c(rep(1,62),rep(0,64))
+set.seed(100)
+bootstrap_mean_estimates <- sapply(1:1000, function(i) mean(sample(shots, replace=TRUE)))
+hist(bootstrap_mean_estimates, freq=FALSE, breaks=20, main="Bootstrap Sample Mean Estimates", xlim=c(0,1),
+     xlab="Bootstrap replicates",col="red")
+bootstrap_CI <- c(quantile(bootstrap_mean_estimates,probs=.025),quantile(bootstrap_mean_estimates,probs=.975))
+print(bootstrap_CI)
+```
+**Regression to the mean occurs when repeated measurements are made on the same subject or unit of observation. This is due to the values being observed with random error. In general, when repeated measurements are made on the same subject and are relatively high/low, they are likely to be followed by less extreme ones near the subjects true mean. In this case, it means Curry's end-of-season FG% will be less than his percentage on 11/19 since it is a relatively high observation.**
+
+**Question 2 a-e**
+```{r}
+load("faces_array.RData")
+face_mat <- sapply(1:1000, function(i) as.numeric(faces_array[, , i])) %>% t
+ plot_face <- function(image_vector) { 
+   plot(as.cimg(t(matrix(image_vector, ncol=100))), axes=FALSE, asp=1)
+}
+```
+**Question 2a**
+```{r}
+face_avg <- colMeans(face_mat)
+plot_face(face_avg)
+```
+**Question 2b**
+```{r}
+pr.out <- prcomp(face_mat,center=TRUE,scale=FALSE)
+pr.var <- (pr.out$sdev)^2
+pve = pr.var/sum(pr.var)
+cumulative_pve <-cumsum(pve)
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+plot(cumulative_pve, xlab="Principal Component ",ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,1), type='b')
+sum(pve[1:5])
+```
+**You need at least 5 PCs to explain at least 50% of the total variation in the face images**
+
+**Question 2c**
+```{r}
+par(mfrow=c(4,4),cex=.1)
+for (i in 1:16){
+  plot_face(pr.out$rotation[,i])
+}
+```
+**Question 2d**
+```{r}
+PC1_sorted <- sort(pr.out$x[,1])
+largest_values <- PC1_sorted[996:1000]
+smallest_values <-PC1_sorted[1:5]
+max_indexs <- c(0,0,0,0,0)
+min_indexs <- c(0,0,0,0,0)
+for (i in 1:5){
+max_indexs[i] <- which(pr.out$x[,1]==largest_values[i])
+min_indexs[i] <- which(pr.out$x[,1]==smallest_values[i])
+}
+par(mfrow=c(1,5),cex=.1)
+for (i in max_indexs){
+plot_face(face_mat[i,])
+}
+par(mfrow=c(1,5),cex=.1)
+for (i in min_indexs){
+plot_face(face_mat[i,])
+}
+```
+**The first principle component seems to capture the face of the person in the image.**
+
+**Question 2e**
+```{r}
+PC5_sorted <- sort(pr.out$x[,5])
+largest_values <- PC5_sorted[996:1000]
+smallest_values <-PC5_sorted[1:5]
+max_indexs <- c(0,0,0,0,0)
+min_indexs <- c(0,0,0,0,0)
+for (i in 1:5){
+max_indexs[i] <- which(pr.out$x[,5]==largest_values[i])
+min_indexs[i] <- which(pr.out$x[,5]==smallest_values[i])
+}
+par(mfrow=c(1,5),cex=.1)
+for (i in max_indexs){
+plot_face(face_mat[i,])
+}
+par(mfrow=c(1,5),cex=.1)
+for (i in min_indexs){
+plot_face(face_mat[i,])
+}
+```
+**The fifth principle component seems to capture the hair at the side of the face of the individuals in the images. PC1 would be more useful feature in a face recognition model because it actually captures the face/features of a persons face.**
+
+**Question 3 a-f**
+
+**Question 3a**
+```{r}
+nonldata = read_csv('nonlinear.csv')
+plot1 = ggplot(nonldata,aes(X1,X2,color =Y)) + geom_point() 
+plot1
+```
+
+**Question 3b**
+```{r}
+grid1 <- expand.grid(X1=seq(-5, 5, by=0.1),  # sample points in X1
+                 X2=seq(-5, 5, by=0.1))  # sample points in X2
+```
+
+```{r}
+nonl.fit = glm(Y~X1+X2, data = nonldata,family = binomial)
+nonl.predict = predict(nonl.fit,grid1,type = "response")
+nonl.ylab = as.factor(ifelse(nonl.predict<=0.5,0,1))
+ggplot(grid1,aes(X1,X2))  + geom_raster(aes(fill=nonl.ylab),alpha = 0.5) + 
+  geom_point(aes(color=Y),data = nonldata)
+```    
+
+**Question 3c**
+```{r}
+nonl.fit2 <- glm(Y~poly(X1,2) + poly(X2,2) + X1*X2,data = nonldata, family = "binomial")
+summary(nonl.fit2)
+nonl.predict2 <- predict(nonl.fit2,grid1,type = "response") 
+nonl.ylab2 <- as.factor(ifelse(nonl.predict2<=0.5,0,1))
+ggplot(grid1,aes(X1,X2)) + geom_raster(aes(fill=nonl.ylab2),alpha = 0.5) + 
+  geom_point(aes(color = Y),data = nonldata)
+```
+
+**Question 3d**
+```{r}
+nonl.fit3<-glm(Y~poly(X1,5) + poly(X2,5), data = nonldata, family = binomial("logit"))
+summary(nonl.fit3)
+nonl.predict3<-predict(nonl.fit3,grid1,type = "response")
+nonl.ylab3 <- as.factor(ifelse(nonl.predict3<=0.5,0,1))
+ggplot(grid1,aes(X1,X2)) + geom_raster(aes(fill = nonl.ylab3),alpha = 0.5) + 
+  geom_point(aes(color = Y),data = nonldata)
+
+```
+**The plot shows a finer representation compared to previous models. The unexplained red area is due to the model boundaries being tighter and more specific, causing the model to predict some values as 0.**
+
+**Question 3e**
+
+**Going from linear to 2nd to 5th degree models, we can see that the 5th degree polynomial has the highest variance and lowest bias, as well as it fitting the data the best. Overfitting may occur however, if we try to predict boundaries.**
+
+**Question 3f**
+```{r,warning=FALSE}
+for (i in 1:3){
+  bootsam = sample(nrow(nonldata), replace=TRUE)
+  nonlrep = nonldata[bootsam,]
+  fit1 = glm(Y~ X1 + X2, nonlrep, family = binomial('logit'))
+  rep.pred = predict(fit1,grid1, type="response")
+  replab = ifelse(rep.pred <= 0.5, 0 , 1)
+  fit2 = glm(Y~poly(X1,5) + poly(X2,5), nonlrep, family = binomial("logit"))
+  rep.pred2 = predict(fit2, grid1, type="response")
+  replab2 = ifelse(rep.pred2 <= 0.5, 0 ,1)
+  plot1 = ggplot(data = grid1, aes(x = X1, y = X2)) +  
+    geom_raster(aes(fill = replab), data = grid1, alpha = 0.5) +
+    geom_point(aes(color = Y), data = nonlrep)
+  plot2 = ggplot(data = grid1, aes(x = X1, y = X2)) + 
+    geom_raster(aes(fill = replab2),data = grid1, alpha = 0.5) +
+    geom_point(aes(color = Y), data = nonlrep)
+  print(plot1)
+  print(plot2)
+}
+```
+**You can see that in 5th degree models, the graph has a high variance and the boundaries are much more different compared to linear and lower degree models, these boundaries fit the data even better.**
+
+**Question 4 a-d**
+
+**Question 4a**
+```{r, warning=FALSE}
+library(ISLR)
+caravan.train <- Caravan[1:1000,]
+caravan.test <- Caravan[1001:5822,]
+```
+**Question 4b**
+```{r, warning=FALSE}
+boostcaravan = gbm(ifelse(Purchase == "Yes", 1, 0)~.,data = caravan.train, 
+                   distribution = "bernoulli", shrinkage = 0.01, n.trees = 1000)
+summary(boostcaravan)
+```
+**From the summary we can see that PPERSAUT, MKOOPKLA, and MOPLHOOG are the most important.**
+
+**Question 4c**
+```{r, warning=FALSE}
+caravan.randf <- randomForest(Purchase~., data = caravan.train, importance = TRUE)
+print(caravan.randf)
+varImpPlot(caravan.randf, sort=T, main="Variable Importance", n.var=5)
+```
+**The out of bag error is 6.2%. 9 Variables tried act each split. 500 trees where used and the most important variables are APLEZIER, MRELOV and MINK7512. The important variables are different in the boosting and tree models.**
+
+**Question 4d**
+```{r, warning=FALSE}
+boostpredict = predict(boostcaravan, newdata=caravan.test, 1000, type="response")
+table(pred=as.factor(ifelse(boostpredict>=.2, "Purchase", "No Purchase")),
+                     true=caravan.test$Purchase)
+
+rfpredict <- predict(caravan.randf, newdata=caravan.test, 500, type="prob")
+table(pred=as.factor(ifelse(rfpredict[,2]>=.2, "Yes", "No")),
+                     true=caravan.test$Purchase)
+```
+
+**Question 5 a-b**
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+drug_use = read_csv('drug.csv', 
+                   col_names = c('ID','Age','Gender','Education','Country','Ethnicity',
+                                 'Nscore','Escore','Oscore','Ascore','Cscore','Impulsive',
+                                'SS','Alcohol','Amphet','Amyl','Benzos','Caff','Cannabis',                              'Choc','Coke','Crack','Ecstasy','Heroin','Ketamine','Legalh','LSD', 
+                                'Meth', 'Mushrooms', 'Nicotine', 'Semer','VSA'))
+```
+**Question 5a**
+```{r}
+drug_use = drug_use %>%
+  mutate(recent_cannabis_use = factor(ifelse(drug_use$Cannabis < 'CL3', "No", "Yes"), 
+                                            levels = c("No","Yes")))
+drugsubset = drug_use %>% select(Age:SS, recent_cannabis_use)
+set.seed(6724)
+train = sample(nrow(drug_use), 1500)
+drug.train = drugsubset[train,]
+drug.test =  drugsubset[-train,]
+drug.svm = svm(recent_cannabis_use~., data=drug.train, kernel = "radial", cost=1, scale=F)
+svm.pred = predict(drug.svm, newdata=drug.test)
+table(predict=svm.pred, truth=drug.test$recent_cannabis_use)
+```
+**Question 5b**
+```{r}
+tuner = tune(svm, recent_cannabis_use~., data=drug.train, kernel="radial",
+              ranges=list(cost=c(0.001, 0.01, 0.1,1,5,10,100)))
+summary(tuner)
+bmodel =  tuner$best.model
+summary(bmodel)
+```
+**The optimal cost is $0.1 and the CV training error is 0.1866667.**
+
+```{r confusion matrix}
+best.prediction = predict(bmodel, newdata = drug.test)
+table(best.prediction, drug.test$recent_cannabis_use)
+```
+
+
+
