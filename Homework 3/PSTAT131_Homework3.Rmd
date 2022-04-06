@@ -1,0 +1,164 @@
+---
+title: "PSTAT 131 Homework 3"
+author: "Tanner Berney 7215445"
+date: "5/21/2021"
+output: pdf_document
+---
+```{r}
+library(tidyverse) 
+library(ROCR) 
+library(tree) 
+library(maptree) 
+library(class) 
+library(lattice) 
+library(ggridges) 
+library(superheat)
+drug_use <- read_csv('drug.csv',
+           col_names = c('ID','Age','Gender','Education','Country','Ethnicity',
+                       'Nscore','Escore','Oscore','Ascore','Cscore','Impulsive',
+                      'SS','Alcohol','Amphet','Amyl','Benzos','Caff','Cannabis',
+                      'Choc','Coke','Crack','Ecstasy','Heroin','Ketamine',
+                      'Legalh','LSD','Meth','Mushrooms','Nicotine','Semer','VSA'))
+drug_use <- drug_use %>% mutate_at(as.ordered, .vars=vars(Alcohol:VSA)) 
+drug_use <- drug_use %>%
+mutate(Gender = factor(Gender, labels=c("Male", "Female"))) %>% 
+  mutate(Ethnicity = factor(Ethnicity, labels=c("Black", "Asian", "White",
+        "Mixed:White/Black", "Other", "Mixed:White/Asian", "Mixed:Black/Asian"))) %>%
+mutate(Country = factor(Country, labels=c("Australia", "Canada", "New Zealand", "Other", "Ireland", "UK", "USA")))
+```
+**Question 1 a-c**
+
+**Question 1a**
+```{r}
+drug_use <- drug_use %>%
+  mutate(recent_cannabis_use = factor(ifelse(Cannabis>="CL3","Yes","No"),levels=c("No","Yes")))
+```
+**Question 1b**
+```{r}
+set.seed(1)
+drug_use_subset <- drug_use %>% select(Age:SS, recent_cannabis_use)
+train_index <- sample(nrow(drug_use_subset),1500)
+drug_use_train <- drug_use_subset[train_index,]
+drug_use_test <- drug_use_subset[-train_index, ]
+dim(drug_use_train)
+dim(drug_use_test)
+```
+**Question 1c**
+```{r}
+glm.fit <- glm(recent_cannabis_use~.,family = binomial("logit"),data=drug_use_train)
+summary(glm.fit)
+```
+**Question 2 a-c**
+```{r}
+tree_parameters = tree.control(nobs=nrow(drug_use_train), minsize=10, mindev=1e-3)
+drug_use_tree = tree(recent_cannabis_use ~., data = drug_use_train, control = tree_parameters)
+```
+**Question 2a**
+```{r}
+cv_drug_use <- cv.tree(drug_use_tree,FUN =prune.misclass,K=10)
+cv_drug_use
+best.cv = cv_drug_use$size[which.min(cv_drug_use$dev)]
+best.cv
+```
+**The size of the tree that minimizes CV error is of size 127.**
+
+**Question 2b**
+```{r}
+drug_tree_pruned <- prune.tree(drug_use_tree,best=127,method = "deviance")
+draw.tree(drug_tree_pruned,nodeinfo=TRUE,cex=.3)
+```
+**The Country variable is split first in the decision tree.**
+
+**Question 2c**
+```{r}
+drug_tree_predict <- predict(drug_tree_pruned,drug_use_test,type="class")
+recent_cannabis_use_test <- drug_use_test$recent_cannabis_use
+confusion_pred <- table(recent_cannabis_use_test,drug_tree_predict)
+confusion_pred
+TPR <- confusion_pred[4]/(confusion_pred[4]+confusion_pred[2])
+FPR <- confusion_pred[3]/(confusion_pred[3]+confusion_pred[1])
+TPR
+FPR
+```
+**I started off by first predicting the tree classes in the model. I then grabbed the true values for cannabis use from the data. After that I put both variables into a table to make the confusion matrix. I then calculated TPR by TP/(TP+FN) and FPR by FP/(FP+TN).**
+
+**Question 3 a-b**
+
+**Question 3a**
+```{r}
+logistic_pred <- predict(glm.fit, drug_use_test, type = "response")
+pred1 <- prediction(logistic_pred,drug_use_test$recent_cannabis_use)
+logistic_perf <- performance(pred1,measure = 'tpr', x.measure = 'fpr')
+tree_pred <- predict(drug_tree_pruned, drug_use_test, type = "vector")[,2]
+pred2 <- prediction(tree_pred,drug_use_test$recent_cannabis_use)
+tree_perf <- performance(pred2,measure = 'tpr', x.measure = 'fpr')
+plot(logistic_perf, col='blue', lwd=2, main='ROC Curve: Logistic Regression (blue) Decision Tree (red)',
+     xlab='FPR', ylab='TPR')
+plot(tree_perf, col='red', lwd=2, add=TRUE)
+abline(0,1)
+```
+**Question 3b**
+```{r}
+logistic_auc <- performance(pred1, "auc")@y.values
+tree_auc <- performance(pred2, "auc")@y.values
+logistic_auc
+tree_auc
+```
+**We can see that the logistic model has a larger AUC being 0.902562.**
+
+**Question 4 a-c and f**
+```{r}
+leukemia_data <- read_csv("leukemia_data.csv")
+```
+**Question 4a**
+```{r}
+leukemia_data <- leukemia_data %>%
+  mutate(Type = as.factor(Type))
+table(leukemia_data$Type)
+```
+**The least occurring subtype of leukemia is BCR-ABL.**
+
+**Question 4b**
+```{r}
+pca <- prcomp(leukemia_data[,-1],scale=TRUE, center=TRUE)
+pve <- pca$sdev^2/sum(pca$sdev^2)
+cumulative_pve <- cumsum(pve) 
+## This will put the next two plots side by side 
+par(mfrow=c(1, 2))
+## Plot proportion of variance explained 
+plot(pve, type="l", lwd=3) 
+plot(cumulative_pve, type="l", lwd=3)
+```
+**Question 4c**
+```{r}
+rainbow_colors <- rainbow(7)
+plot_colors <- rainbow_colors[leukemia_data$Type]
+plot(pca$x, col=plot_colors, cex=.1)
+text(pca$x, col=plot_colors, labels=leukemia_data$Type, cex=.4)
+print(pca$rotation[,1] %>% abs() %>% sort() %>% head(n=6))
+```
+**The T-ALL group is clearly separated from the others along the PC1 axis.**
+
+**Question 4f**
+```{r}
+library(dendextend)
+leukemia_subset <- leukemia_data %>% 
+  filter(Type == c('T-ALL', 'TEL-AML1', 'Hyperdip50'))
+par(mfrow=c(1, 2))
+leuk.dist <- dist(leukemia_subset, method = 'euclidean')
+leuk.hclust <- hclust(leuk.dist, method = 'complete')
+dendogram1 <- as.dendrogram(leuk.hclust)
+dendogram1 <- color_branches(dendogram1, k=3)
+dendogram1 <- color_labels(dendogram1, k=3)
+dendogram1 <- set(dendogram1, "labels_cex", .3)
+dendogram1 <- set_labels(dendogram1, labels=leukemia_subset$Type[order.dendrogram(dendogram1)])
+plot(dendogram1, horiz=T, main="3 Cluster Dendogram")
+dendogram2 <- as.dendrogram(leuk.hclust)
+dendogram2 <- color_branches(dendogram2, k=5)
+dendogram2 <- color_labels(dendogram2, k=5)
+dendogram2 <- set(dendogram2, "labels_cex", .3)
+dendogram2 <- set_labels(dendogram2, labels=leukemia_subset$Type[order.dendrogram(dendogram2)])
+plot(dendogram2, horiz=T, main="5 Cluster Dendrogram")
+```
+
+

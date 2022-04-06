@@ -1,0 +1,204 @@
+---
+title: "PSTAT 131 Homework 1"
+author: "Tanner Berney 7215445"
+date: "4/15/2021"
+output: pdf_document
+---
+```{r}
+library(tidyverse)
+library(reshape2) 
+algae <- read_table2("algaeBloom.txt", col_names= c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+  'oPO4','PO4','Chla','a1','a2','a3','a4','a5','a6','a7'),na="XXXXXXX")
+glimpse(algae)
+```
+**Question 1 a-c**
+
+**1a)**
+```{r}
+algae %>%
+  group_by(season) %>%
+  summarise(length(season))
+```
+**40 obs in autumn, 53 obs in spring, 45 obs in summer, and 62 obs in winter.**
+
+**1b)**
+```{r}
+sum(is.na(algae))
+algae %>%
+  select(mxPH,mnO2,Cl,NO3,NH4,oPO4,PO4,Chla) %>%
+  filter(!is.na(mxPH),!is.na(mnO2),!is.na(Cl),!is.na(NO3),!is.na(NH4),!is.na(oPO4),!is.na(PO4),!is.na(Chla)) %>%
+  summarise(across(c(mxPH,mnO2,Cl,NO3,NH4,oPO4,PO4,Chla),list(mean=mean,var=var)))
+```
+**Yes, 33 missing values total. Looking at the magnitude of the two quantities, it is very apparent that the means and standard deviation of each variable differ. For example the mean of NO3 is 3.38 where as NH4 has a mean of 2031.58. The standard deviation of mxPH is 0.47 where as the standard deviation for Cl is 47.06. These values could be due to outliers found in some of the chemical observations.**
+
+**1c)**
+```{r}
+algae %>%
+  select(mxPH,mnO2,Cl,NO3,NH4,oPO4,PO4,Chla) %>%
+  filter(!is.na(mxPH),!is.na(mnO2),!is.na(Cl),!is.na(NO3),!is.na(NH4),!is.na(oPO4),!is.na(PO4),!is.na(Chla)) %>%
+  summarise(across(c(mxPH,mnO2,Cl,NO3,NH4,oPO4,PO4,Chla),list(median=median,mad=mad)))
+```
+**Comparing the two set of quantities we can see that the medians of each chemical is fairly close to the mean of each chemical along with the medians of each having a fairly large difference. We can also see that the MAD and median of each chemical is also fairly close to one another with the exception of mxPH and mmO2. It is also interesting to see that the MAD and standard deviation of each chemical are fairly close to one another as well.**
+
+**Question 2 a-e**
+
+**2a)**
+```{r}
+ggplot(algae,aes(x=mxPH))+
+  geom_histogram(binwidth=.25,color="black",fill="lightblue",na.rm=T,aes(y=after_stat(density)))+
+  labs(title="Histogram of mxPH")
+```
+**The distribution is NOT skewed, it has a symmetric bell looking shape. If anything, it looks to be SLIGHTLY skewed to the left.**
+
+**2b)**
+```{r}
+ggplot(algae,aes(x=mxPH))+
+  geom_histogram(binwidth=.25,color="black",fill="lightblue",na.rm=T,aes(y=after_stat(density)))+
+  labs(title="Histogram of mxPH")+geom_density(color="red")+
+  geom_rug()
+```
+**2c)**
+```{r}
+ggplot(algae,aes(x=size,y=a1))+
+  labs(title="A conditioned Boxplot of Algal a1")+
+  geom_boxplot(color="black",fill="lightblue")
+```
+**2d)**
+```{r}
+ggplot(algae,aes(x=size,y=NO3))+
+  labs(title="A conditioned Boxplot of Algal NO3")+
+  geom_boxplot(color="black",fill="lightblue",na.rm = T)
+ggplot(algae,aes(x=size,y=NH4))+
+  labs(title="A conditioned Boxplot of Algal NH4")+
+  geom_boxplot(color="black",fill="lightblue",na.rm = T)
+ggplot(algae,aes(x=NO3))+
+  geom_histogram(binwidth=.25,color="black",fill="lightblue",na.rm=T)
+```
+
+
+```{r}
+labs(title="Histogram of NO3")
+ggplot(algae,aes(x=NH4))+
+  geom_histogram(binwidth=.25,color="black",fill="lightblue",na.rm=T)+
+  labs(title="Histogram of NH4")
+boxplot.stats(algae$NO3)$out
+boxplot.stats(algae$NH4)$out
+max(algae$NH4,na.rm=T)
+max(algae$NO3,na.rm=T)
+```
+**Yes there is an outlier for both NH4 and NO3, but I would only consider one observation to be considered the outlier, which can be found to be the 153rd observation in NH4 and NO3. I came to this conclusion by plotting box plots of each along with histograms to get a better sense of the outliers. Along with using boxplot.stats() to see what values seemed to be deemed outliers by R software. After close inspection, the only big outlier was found to be the 153rd observation where the other values were close enough in the histogram/boxplots to not be considered outliers to me.**
+
+**2e)**
+
+**From the results of 1c) we have N03 with mean 3.38, variance 15.01, median 2.82, and MAD 2.31. NH4 has mean 537.6, variance 4127337, median 115.7, and MAD 120.9. Since mean and variance take outliers into account, it makes them sensitive when there is an outlier present. Because of this, those two estimators are not the best choice in this case. Using Median and MAD are less sensitive to any outliers so they are more robust when outliers are present. This also helps to show why the mean/variance differ so much from the median and MAD.**
+
+**Question 3 a-e**
+
+**3a)**
+```{r}
+sum(is.na(algae))
+colSums(is.na(algae))
+```
+**There are 33 NA values. Number of missing values per chemical: mxph=1, mnO2=2, Cl=10, NO3=2, NH4=2, oPO4=2, PO4=2, Chla=12, all other chemicals have 0 missing values.**
+
+**3b)**
+```{r}
+algae.del <- algae %>% 
+  filter(complete.cases(.))
+nrow(algae.del)
+```
+**There are 184 observations in the algae.del data set.**
+
+**3c)**
+```{r}
+algae.med <- algae %>%
+  mutate_at(.vars=vars(mxPH,mnO2,Cl,NO3,NH4,oPO4,PO4,Chla),.funs=list(~ifelse(is.na(.), median(., na.rm=TRUE), .)))
+algae.med[c(48,62,199),]
+```
+**3d)**
+```{r}
+cor(x=algae.med[4:13], use= "pairwise.complete.obs")
+PO4_predict <- predict(lm(PO4~oPO4, data = algae.med))
+PO4_predict[28]
+```
+**We get a value of 48.04407.**
+
+**3e)**
+
+**Using the correlation of other predictor variables can leave us with missing values which is a poor substitution attempt. If given a data set with a large amount of missing values in it, this method will not be useful to us. It will instead leave the values that have NA unchanged which does not help us.**
+
+**Question 4 a-b**
+
+**4a)**
+```{r}
+set.seed(50)
+chunks <- cut((1:nrow(algae)), breaks=5, labels= FALSE) %>%
+  sample()
+```
+**4b)**
+```{r}
+set.seed(333)
+do.chunk <- function(chunkid, chunkdef, dat){ # function argument
+train = (chunkdef != chunkid)
+Xtr = dat[train,1:11] # get training set
+Ytr = dat[train,12] # get true response values in training set
+Xvl = dat[!train,1:11] # get validation set
+Yvl = dat[!train,12] # get true response values in validation set
+lm.a1 <- lm(a1~., data = dat[train,1:12])
+predYtr = predict(lm.a1) # predict training values
+predYvl = predict(lm.a1,Xvl) # predict validation values
+data.frame(fold = chunkid,
+train.error = mean(as.matrix((predYtr - Ytr)^2)), # compute and store training error
+val.error = mean(as.matrix((predYvl - Yvl)^2))) # compute and store test error
+}
+print(lapply(1:5,FUN=do.chunk,chunkdef=chunks,dat=algae.med))
+```
+**Question 5a**
+```{r}
+algae.Test <- read_table2('algaeTest.txt', col_names=c('season','size','speed','mxPH','mnO2','Cl','NO3',
+'NH4','oPO4','PO4','Chla','a1'), na=c('XXXXXXX'))
+a1_predict <- predict(lm(a1~season+size+speed+mxPH+mnO2+Cl+NO3+NH4+oPO4+PO4+Chla,data=algae.med),data=algae.Test)
+a1_true <- algae.Test[,12]
+mean(as.matrix((a1_predict - a1_true)^2))
+```
+**Looking at the CV test error from part 4 and comparing to question 5 CV test error, we see that the difference is about 200 which seems large to me. I expected the values to be a little closer to one another however.**
+
+**Question 6 a-c**
+
+**6a)**
+```{r}
+library(ISLR) 
+head(Wage)
+ggplot(Wage,aes(x=age,y=wage))+geom_point(color="red")+geom_smooth()
+```
+**Looking at the visualization, it seems to me that as age increases so does the wages. However, at about age 65 the wages start to decrease and be similar to those of younger people. This is what I expected as people get older their wages increase. However, I thought wages would be higher for people 65 and older.**
+
+**6b)**
+```{r}
+set.seed(211)
+do.chunk.2 <- function(chunkid, chunkdef, dat){ # function argument
+train = (chunkdef != chunkid)
+Xtr = dat[train,1:10] # get training set
+Ytr = dat[train,11] # get true response values in training set
+Xvl = dat[!train,1:10] # get validation set
+Yvl = dat[!train,11] # get true response values in validation set
+lm.age <- lm(wage~poly(age,degree=10,raw=F),data=dat[train,1:11])
+predYtr = predict(lm.age) # predict training values
+predYvl = predict(lm.age,Xvl) # predict validation values
+data.frame(fold = chunkid,
+train.error = mean(as.matrix((predYtr - Ytr)^2)), # compute and store training error
+val.error = mean(as.matrix((predYvl - Yvl)^2))) # compute and store test error
+}
+set.seed(111)
+chunks.wage <- cut((1:nrow(Wage)), breaks=5, labels= FALSE) %>%
+  sample()
+errors <- lapply(1:5,FUN=do.chunk.2,chunkdef=chunks.wage,dat=Wage)
+errors.1 = melt(errors, id.vars=c('fold', 'train.error',"val.error"), value.name='error')
+```
+**6c)**
+```{r}
+ggplot()+ 
+    geom_line(errors.1,mapping= aes(x=fold,y=train.error),color="blue")+
+  geom_line(errors.1,mapping=aes(x=fold,y=val.error),color="red")
+```
+**As p increases the training error decreases and then increases to follow a steady line. The test error starts off by increasing a lot and then after drops down to nearing zero. We should select model 2 since the test error is much larger than the training error.**

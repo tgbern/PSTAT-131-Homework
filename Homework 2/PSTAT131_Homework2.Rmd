@@ -1,0 +1,166 @@
+---
+title: "PSTAT 131 Homework 2"
+author: "Tanner Berney 7215445"
+date: "5/1/2021"
+output: pdf_document
+---
+```{r}
+library(tidyverse) 
+library(tree) 
+library(plyr) 
+library(class) 
+library(rpart) 
+library(maptree) 
+library(ROCR)
+library(reshape2)
+spam <- read_table2("spambase.tab.txt", guess_max=2000) 
+spam <- spam %>%
+  mutate(y = factor(y, levels=c(0,1), labels=c("good", "spam"))) %>% # label as factors 
+  mutate_at(.vars=vars(-y), .funs=scale) # scale others
+calc_error_rate <- function(predicted.value, true.value){ 
+  return(mean(true.value!=predicted.value))
+}
+records = matrix(NA, nrow=3, ncol=2) 
+colnames(records) <- c("train.error","test.error") 
+rownames(records) <- c("knn","tree","logistic")
+set.seed(1)
+test.indices = sample(1:nrow(spam), 1000) 
+spam.train=spam[-test.indices,] 
+spam.test=spam[test.indices,]
+nfold = 10
+set.seed(1)
+folds = seq.int(nrow(spam.train)) %>% ## sequential obs ids
+  cut(breaks = nfold, labels=FALSE) %>% ## sequential fold ids
+  sample ## random fold ids
+```
+**Question 1**
+```{r}
+set.seed(1)
+do.chunk <- function(chunkid, folddef, Xdat, Ydat, k){ 
+  train = (folddef!=chunkid)
+  Xtr = Xdat[train,]
+  Ytr = Ydat[train]
+  Xvl = Xdat[!train,] 
+  Yvl = Ydat[!train]
+  ## get classifications for current training chunks
+  predYtr = knn(train = Xtr, test = Xtr, cl = Ytr, k = k) ## get classifications for current test chunk
+  predYvl = knn(train = Xtr, test = Xvl, cl = Ytr, k = k)
+  data.frame(fold = chunkid, train.error = calc_error_rate(predYtr, Ytr), val.error = calc_error_rate(predYvl, Yvl))
+}
+kvec = c(1, seq(10, 50, length.out=5))
+error.folds <- NULL
+YTrain <- spam.train$y
+XTrain <- spam.train %>% select(-y)
+YTest <- spam.test$y
+XTest <- spam.test %>% select(-y)
+set.seed(1)
+for (j in kvec){
+ tmp = ldply(1:nfold, do.chunk, # apply do.function to each fold
+ folddef=folds, Xdat=XTrain, Ydat=YTrain, k=j) # arguments
+ tmp$neighbors = j # track each value of neighbors
+ error.folds = rbind(error.folds, tmp) # combine the results 
+}
+ errors = melt(error.folds, id.vars=c('fold', 'neighbors'), value.name='error') # Choose the number of neighbors which minimizes validation error
+val.error.means = errors %>% 
+  # Select all rows of validation errors 
+  filter(variable=='val.error') %>% 
+  # Group the selected data frame by neighbors 
+  group_by(neighbors, variable) %>% 
+  # Calculate CV error rate for each k 
+  summarise_each(funs(mean), error) %>% 
+  # Remove existing group
+  ungroup() %>%
+  filter(error==min(error))
+numneighbor = max(val.error.means$neighbors)
+numneighbor
+```
+**A value of k=10 leads to the smallest estimated test error.**
+
+**Question 2**
+```{r}
+# Training error
+set.seed(1)
+pred.YTtrain = knn(train=XTrain, test=XTrain, cl=YTrain, k=10)
+knn.training.error <- calc_error_rate(predicted.value=pred.YTtrain, true.value=YTrain)
+knn.training.error
+# Test error
+set.seed(1)
+pred.YTest = knn(train=XTrain, test=XTest, cl=YTrain, k=10)
+knn.test.error <- calc_error_rate(predicted.value=pred.YTest, true.value=YTest)
+knn.test.error
+records[1,1:2] <- c(knn.training.error,knn.test.error)
+records
+```
+**Question 3**
+```{r}
+spamtree = tree(y ~., data = spam.train, control = tree.control(nobs= nrow(spam.train),minsize = 5, mindev = 0.00001))
+summary(spamtree)
+```
+**There are 149 leaf nodes. 49 observations are misclassified.**
+
+**Question 4**
+```{r}
+prune <- prune.tree(spamtree,best=10,method="deviance")
+summary(prune)
+draw.tree(prune,nodeinfo = TRUE,cex = .5)
+```
+**Question 5**
+```{r}
+set.seed(1)
+cv <- cv.tree(spamtree,rand=folds,FUN = prune.misclass,K=10)
+best.size.cv = cv$size[which.min(cv$dev)]
+plot(cv$size, cv$dev, type="b",xlab="Tree Size",ylab="Misclassification")
+abline(v=best.size.cv,lty="dashed")
+```
+**Question 6**
+```{r}
+spamtree.pruned <- prune.misclass(spamtree,best=best.size.cv)
+spamtree.pred.train <- predict(spamtree.pruned,spam.train,type="class")
+spamtree.pred.test <- predict(spamtree.pruned,spam.test,type="class")
+tree.training.error <- calc_error_rate(predicted.value=spamtree.pred.train,true.value =spam.train$y)
+tree.training.error
+tree.test.error <- calc_error_rate(predicted.value=spamtree.pred.test,true.value =spam.test$y)
+tree.test.error
+records[2,1:2] <- c(tree.training.error,tree.test.error)
+```
+
+
+**Question 7 a-b**
+
+**Question 7a**
+$$
+\begin{aligned}
+  p(z) &= \frac{e^z}{1+e^z} \\
+  \frac{p(z)}{1-p(z)} &= \frac{\frac{e^z}{1+e^z}}{1-\frac{e^z}{1+e^z}} \\
+  &= \frac{\frac{e^z}{1+e^z}}{1-\frac{e^z}{1+e^z}} * \frac{1+e^z}{1+e^z} \\
+  &= \frac{e^z}{(1+e^z)*(\frac{1+e^z}{1+e^z}-\frac{e^z}{1+e^z})} \\
+  &= \frac{e^z}{(1+e^z)*(\frac{1+e^z-e^z}{1+e^z})} \\
+  &= \frac{e^z}{(1+e^z)*(\frac{1}{1+e^z})} \\
+  &= e^z \\
+  &= \ln{(e^z)} \\
+  &= z \\
+  \ln{(\frac{p}{1-p})} &= z(p)
+\end{aligned}
+$$
+**Question 7b**
+
+**For every one unit change of x1, the log odds increases by B1. So Increasing x1 by two will result in a increase of B1 two times. As x1 approaches infinity, p approaches 0. As x1 approaches negative infinity p approaches 1.**
+
+**Question 8**
+```{r}
+glm.fit <- glm(y ~ .,data=spam, family=binomial("logit"))
+train.pred <- ifelse(predict(glm.fit, newdata=spam.train,type = "response") <= 0.5, "good", "spam")
+test.pred <- ifelse(predict(glm.fit, newdata = spam.test, type = "response") <= 0.5, "good", "spam")
+logistic.training.error <- calc_error_rate(predicted.value=train.pred, true.value=spam.train$y)
+logistic.training.error
+logisitc.testing.error <- calc_error_rate(predicted.value=test.pred, true.value=spam.test$y)
+logisitc.testing.error
+records[3,1:2] <- c(logistic.training.error,logisitc.testing.error)
+records
+```
+**The logistic method had the lowest misclassification error on the test set being 0.072**
+
+**Question 9**
+
+**If I was the designer of the Spam filter I would be more concerned about having a large false positive rate. This is because if someone was using this to filter their emails, there is a good chance that a lot of their mail will be marked as spam when it is really not spam. This could than cause them to not read important emails. If I had a small true positive rate, I may be missing more of the spam, however it would allow the user to not have their important emails get marked as spam.**
+
